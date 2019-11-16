@@ -150,36 +150,60 @@ class Lstm(torch.nn.Module):
         e1_embedded= self.emb_e(e1)
         rel_embedded = self.emb_rel(rel)
         stacked_inputs = torch.cat([e1_embedded, rel_embedded], 2)
-
-        # print("stacked")
-        # print(stacked_inputs.shape)
-
         x = stacked_inputs.view(self.batch_size, self.timesteps, -1)
-
-        # print("stacked pos view")
-        # print(x)
-        # print(x.shape)
-
         x, (hn, cn) = self.rnn(x)
         x = self.fc(x[:, -1, :])
-
-        # print("valor de x pós fc")
-        # print(x)
-        # print(x.shape)
-        # print(x.type)
-
         x = F.log_softmax(x, dim=1)
+        x = torch.mm(x, self.emb_e.weight.transpose(1,0))
+        x += self.b.expand_as(x)
+        pred = torch.sigmoid(x)
+        return pred
 
-        # print("valor de x pós log_softmax")
-        # print(x)
-        # print(x.shape)
+class DualLstm(torch.nn.Module):
+    def __init__(self, args, num_entities, num_relations):
+        super(DualLstm, self).__init__()
+        self.emb_e = torch.nn.Embedding(num_entities, args.embedding_dim, padding_idx=0)
+        self.emb_rel = torch.nn.Embedding(num_relations, args.embedding_dim, padding_idx=0)
+        self.hidden_drop = torch.nn.Dropout(args.hidden_drop)
+        self.inp_drop = torch.nn.Dropout(args.input_drop)
+        self.loss = torch.nn.BCELoss()
+        self.batch_size = args.batch_size
+        self.timesteps = args.timesteps
+        self.embedding_dim = args.embedding_dim
+
+        self.emb_dim1 = args.embedding_shape1
+        self.emb_dim2 = args.embedding_dim // self.emb_dim1
+
+        self.rnn1 = torch.nn.LSTM(input_size=self.embedding_dim//self.timesteps, hidden_size=args.hidden_size//2 * args.num_layers, num_layers=args.num_layers, batch_first=True, dropout=args.input_drop)
+        self.rnn2 = torch.nn.LSTM(input_size=self.embedding_dim//self.timesteps, hidden_size=args.hidden_size//2 * args.num_layers, num_layers=args.num_layers, batch_first=True, dropout=args.input_drop)
+        self.fc = torch.nn.Linear(args.hidden_size,args.embedding_dim)
+        self.register_parameter('b', Parameter(torch.zeros(num_entities)))
+
+        print(num_entities, num_relations)
+
+    def init(self):
+        xavier_normal_(self.emb_e.weight.data)
+        xavier_normal_(self.emb_rel.weight.data)
+        
+    def forward(self, e1, rel):
+        e1_embedded= self.emb_e(e1)
+        rel_embedded = self.emb_rel(rel)
+
+        x1 = e1_embedded.view(self.batch_size, self.timesteps, -1)
+        x2 = rel_embedded.view(self.batch_size, self.timesteps, -1)
+
+        x1, (hn1, cn1) = self.rnn1(x1)
+        x2, (hn2, cn2) = self.rnn2(x2)
+
+        x = torch.cat([hn1, hn2], 2)
+        x = x.view(x.shape[1], -1)
+
+        x = self.fc(x)
+        x = self.hidden_drop(x)
+        x = F.log_softmax(x, dim=1)
 
         x = torch.mm(x, self.emb_e.weight.transpose(1,0))
         x += self.b.expand_as(x)
         pred = torch.sigmoid(x)
-
-        # print("pred")
-        # print(pred.shape)
-        # print(pred.type)
 
         return pred

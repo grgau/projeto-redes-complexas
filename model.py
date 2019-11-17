@@ -153,7 +153,7 @@ class Lstm(torch.nn.Module):
         x = stacked_inputs.view(self.batch_size, self.timesteps, -1)
         x, (hn, cn) = self.rnn(x)
         x = self.fc(x[:, -1, :])
-        # x = F.log_softmax(x, dim=1)
+        x = F.log_softmax(x, dim=1)
         x = torch.mm(x, self.emb_e.weight.transpose(1,0))
         x += self.b.expand_as(x)
         pred = torch.sigmoid(x)
@@ -200,7 +200,7 @@ class DualLstm(torch.nn.Module):
 
         x = self.fc(x)
         x = self.hidden_drop(x)
-        # x = F.log_softmax(x, dim=1)
+        x = F.log_softmax(x, dim=1)
 
         x = torch.mm(x, self.emb_e.weight.transpose(1,0))
         x += self.b.expand_as(x)
